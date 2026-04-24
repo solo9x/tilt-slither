@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Tilt & Slither</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  :root {
+    --neon-green: #39ff14;
+    --neon-cyan: #00f5ff;
+    --neon-pink: #ff2d78;
+    --dark-bg: #050810;
+    --grid-color: rgba(0, 245, 255, 0.06);
+    --panel-bg: rgba(5, 8, 16, 0.92);
+    --snake-head: #39ff14;
+    --snake-body: #1aff88;
+    --food-color: #ff2d78;
+    --wall-color: #1a2744;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--dark-bg);
+    font-family: 'Space Mono', monospace;
+    overflow: hidden;
+    color: #fff;
+    touch-action: none;
+    user-select: none;
+  }
+
+  #app {
+    width: 100%; height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  /* Scanline effect */
+  #app::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  canvas {
+    display: block;
+    image-rendering: pixelated;
+  }
+
+  /* HUD */
+  #hud {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: linear-gradient(to bottom, rgba(5,8,16,0.9), transparent);
+    z-index: 50;
+  }
+
+  #score-display, #level-display {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    color: var(--neon-cyan);
+    letter-spacing: 2px;
+    text-shadow: 0 0 8px var(--neon-cyan);
+  }
+
+  #score-display span, #level-display span {
+    font-size: 20px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 0 12px var(--neon-green);
+    margin-left: 4px;
+  }
+
+  /* Screens */
+  .screen {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 80;
+    padding: 24px;
+    background: rgba(5, 8, 16, 0.96);
+    transition: opacity 0.4s;
+  }
+
+  .screen.hidden { opacity: 0; pointer-events: none; }
+
+  .logo {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(28px, 8vw, 48px);
+    font-weight: 900;
+    letter-spacing: 4px;
+    color: var(--neon-green);
+    text-shadow:
+      0 0 20px var(--neon-green),
+      0 0 40px rgba(57, 255, 20, 0.4);
+    text-align: center;
+    line-height: 1.1;
+    margin-bottom: 6px;
+  }
+
+  .logo-sub {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    letter-spacing: 6px;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 8px var(--neon-cyan);
+    margin-bottom: 32px;
+    text-transform: uppercase;
+  }
+
+  .snake-logo {
+    width: 80px;
+    height: 80px;
+    margin-bottom: 24px;
+    animation: float 3s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+
+  .info-box {
+    background: rgba(0, 245, 255, 0.05);
+    border: 1px solid rgba(0, 245, 255, 0.2);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 28px;
+    max-width: 320px;
+    width: 100%;
+  }
+
+  .info-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.7);
+    line-height: 1.6;
+    margin-bottom: 8px;
+  }
+
+  .info-row:last-child { margin-bottom: 0; }
+
+  .info-icon {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    color: var(--neon-cyan);
+  }
+
+  .btn {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    padding: 14px 32px;
+    border: 2px solid var(--neon-green);
+    background: transparent;
+    color: var(--neon-green);
+    border-radius: 4px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.15s;
+    text-shadow: 0 0 8px var(--neon-green);
+    box-shadow: 0 0 15px rgba(57, 255, 20, 0.2), inset 0 0 15px rgba(57, 255, 20, 0.05);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--neon-green);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .btn:active::before { opacity: 0.15; }
+
+  .btn:active {
+    transform: scale(0.97);
+    box-shadow: 0 0 25px rgba(57, 255, 20, 0.4), inset 0 0 25px rgba(57, 255, 20, 0.1);
+  }
+
+  .btn-secondary {
+    border-color: var(--neon-cyan);
+    color: var(--neon-cyan);
+    text-shadow: 0 0 8px var(--neon-cyan);
+    box-shadow: 0 0 15px rgba(0, 245, 255, 0.2), inset 0 0 15px rgba(0, 245, 255, 0.05);
+    margin-top: 12px;
+    font-size: 12px;
+    padding: 10px 24px;
+  }
+
+  /* Game Over */
+  .final-score {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(48px, 15vw, 80px);
+    font-weight: 900;
+    color: var(--neon-green);
+    text-shadow: 0 0 30px var(--neon-green), 0 0 60px rgba(57,255,20,0.4);
+    margin: 8px 0;
+  }
+
+  .score-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 8px var(--neon-cyan);
+    margin-bottom: 4px;
+  }
+
+  .death-cause {
+    font-size: 12px;
+    color: var(--neon-pink);
+    text-shadow: 0 0 8px var(--neon-pink);
+    letter-spacing: 2px;
+    margin-bottom: 28px;
+    text-transform: uppercase;
+  }
+
+  .highscore-bar {
+    font-size: 11px;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 2px;
+    margin-bottom: 28px;
+  }
+
+  .highscore-bar span {
+    color: #ffd700;
+    text-shadow: 0 0 8px #ffd700;
+    font-weight: 700;
+  }
+
+  /* Tilt indicator */
+  #tilt-indicator {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  #tilt-ring {
+    width: 48px;
+    height: 48px;
+    border: 1.5px solid rgba(0, 245, 255, 0.4);
+    border-radius: 50%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #tilt-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--neon-cyan);
+    border-radius: 50%;
+    position: absolute;
+    box-shadow: 0 0 6px var(--neon-cyan);
+    transition: left 0.05s, top 0.05s;
+    transform: translate(-50%, -50%);
+    left: 50%;
+    top: 50%;
+  }
+
+  /* On-screen D-pad for desktop */
+  #dpad {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    z-index: 50;
+    display: grid;
+    grid-template-columns: 44px 44px 44px;
+    grid-template-rows: 44px 44px 44px;
+    gap: 3px;
+  }
+
+  .dpad-btn {
+    background: rgba(0, 245, 255, 0.08);
+    border: 1px solid rgba(0, 245, 255, 0.2);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: rgba(0, 245, 255, 0.6);
+    font-size: 18px;
+    transition: background 0.1s;
+    touch-action: manipulation;
+  }
+
+  .dpad-btn:active {
+    background: rgba(0, 245, 255, 0.2);
+    color: var(--neon-cyan);
+  }
+
+  .dpad-btn.empty { background: transparent; border: none; pointer-events: none; }
+
+  /* Sensor status */
+  #sensor-status {
+    position: fixed;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: rgba(255,255,255,0.3);
+    z-index: 50;
+    text-align: center;
+    pointer-events: none;
+  }
+
+  .status-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #555;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+
+  .status-dot.active {
+    background: var(--neon-green);
+    box-shadow: 0 0 4px var(--neon-green);
+  }
+
+  /* Animations */
+  @keyframes glitch {
+    0%, 100% { clip-path: inset(0 0 0 0); transform: translate(0); }
+    20% { clip-path: inset(20% 0 60% 0); transform: translate(-3px, 2px); }
+    40% { clip-path: inset(60% 0 10% 0); transform: translate(3px, -2px); }
+    60% { clip-path: inset(40% 0 30% 0); transform: translate(-2px, 1px); }
+    80% { clip-path: inset(10% 0 70% 0); transform: translate(2px, -1px); }
+  }
+
+  .glitch-text {
+    position: relative;
+    display: inline-block;
+  }
+
+  .glitch-text::before {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    color: var(--neon-pink);
+    animation: glitch 5s infinite steps(1);
+    opacity: 0.5;
+  }
+
+  @keyframes pulse-ring {
+    0% { box-shadow: 0 0 0 0 rgba(57, 255, 20, 0.3); }
+    100% { box-shadow: 0 0 0 16px rgba(57, 255, 20, 0); }
+  }
+
+  .pulse { animation: pulse-ring 1.5s infinite; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Game Canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- HUD -->
+  <div id="hud" style="display:none">
+    <div id="score-display">SCORE <span id="scoreVal">0</span></div>
+    <div id="level-display">LVL <span id="levelVal">1</span></div>
+  </div>
+
+  <div id="sensor-status" style="display:none">
+    <span class="status-dot" id="sensorDot"></span>
+    <span id="sensorLabel">GYRO OFF</span>
+  </div>
+
+  <!-- Tilt indicator -->
+  <div id="tilt-indicator" style="display:none">
+    <div id="tilt-ring">
+      <div id="tilt-dot"></div>
+    </div>
+  </div>
+
+  <!-- D-Pad (desktop fallback) -->
+  <div id="dpad" style="display:none">
+    <div class="dpad-btn empty"></div>
+    <div class="dpad-btn" id="dUp">▲</div>
+    <div class="dpad-btn empty"></div>
+    <div class="dpad-btn" id="dLeft">◀</div>
+    <div class="dpad-btn empty"></div>
+    <div class="dpad-btn" id="dRight">▶</div>
+    <div class="dpad-btn empty"></div>
+    <div class="dpad-btn" id="dDown">▼</div>
+    <div class="dpad-btn empty"></div>
+  </div>
+
+  <!-- Start Screen -->
+  <div class="screen" id="startScreen">
+    <svg class="snake-logo" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="2" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <rect x="4" y="36" width="12" height="12" rx="3" fill="#39ff14" filter="url(#glow)"/>
+      <rect x="16" y="36" width="12" height="12" rx="3" fill="#1aff88"/>
+      <rect x="28" y="36" width="12" height="12" rx="3" fill="#1aff88"/>
+      <rect x="28" y="24" width="12" height="12" rx="3" fill="#1aff88"/>
+      <rect x="40" y="24" width="12" height="12" rx="3" fill="#1aff88"/>
+      <rect x="52" y="24" width="12" height="12" rx="3" fill="#1aff88"/>
+      <rect x="52" y="36" width="12" height="12" rx="3" fill="#1aff88"/>
+      <rect x="52" y="48" width="12" height="12" rx="3" fill="#1aff88"/>
+      <rect x="40" y="48" width="12" height="12" rx="3" fill="#1aff88"/>
+      <circle cx="10" cy="32" r="2" fill="#00f5ff"/>
+      <circle cx="13" cy="32" r="2" fill="#00f5ff"/>
+      <circle cx="8" cy="40" r="1.5" fill="#ff2d78"/>
+    </svg>
+
+    <div class="logo glitch-text" data-text="TILT &amp; SLITHER">TILT &amp; SLITHER</div>
+    <div class="logo-sub">The Gyro Snake Project</div>
+
+    <div class="info-box">
+      <div class="info-row">
+        <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="7" y="2" width="10" height="20" rx="3"/>
+          <circle cx="12" cy="18" r="1"/>
+        </svg>
+        <span>Tilt your phone to steer the snake — no buttons needed.</span>
+      </div>
+      <div class="info-row">
+        <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M12 8v4l3 3"/>
+        </svg>
+        <span>Eat glowing food to grow. Speed increases every 5 bites.</span>
+      </div>
+      <div class="info-row">
+        <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+        <span>Avoid walls and your own tail. Good luck.</span>
+      </div>
+    </div>
+
+    <button class="btn pulse" id="startBtn">INITIALISE</button>
+    <button class="btn btn-secondary" id="keyboardBtn">USE KEYBOARD ↗</button>
+  </div>
+
+  <!-- Countdown -->
+  <div class="screen hidden" id="countdownScreen">
+    <div class="logo" id="countdownNum" style="font-size:96px">3</div>
+    <div class="logo-sub">GET READY</div>
+  </div>
+
+  <!-- Game Over Screen -->
+  <div class="screen hidden" id="gameOverScreen">
+    <div style="font-family:'Orbitron',sans-serif;font-size:11px;letter-spacing:6px;color:var(--neon-pink);text-shadow:0 0 10px var(--neon-pink);margin-bottom:8px">— SIGNAL LOST —</div>
+    <div class="score-label">FINAL SCORE</div>
+    <div class="final-score" id="finalScore">0</div>
+    <div class="death-cause" id="deathCause">WALL COLLISION</div>
+    <div class="highscore-bar" id="highscoreBar">BEST: <span id="bestScore">0</span></div>
+    <button class="btn" id="restartBtn">REBOOT</button>
+    <button class="btn btn-secondary" id="menuBtn">MAIN MENU</button>
+  </div>
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+const CELL = 20;
+let canvas, ctx, W, H, COLS, ROWS;
+let snake, dir, nextDir, food, score, level, speed, biteCount, highScore = 0;
+let gameLoop = null, gameActive = false, gameStarted = false;
+let usingSensor = false, keyboardMode = false;
+let gamma = 0;
+let lastTime = 0, elapsed = 0;
+const DEAD_ZONE = 8; // degrees
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+function setup() {
+  canvas = document.getElementById('gameCanvas');
+  ctx = canvas.getContext('2d');
+  resize();
+  window.addEventListener('resize', resize);
+  setupKeyboard();
+  setupDpad();
+  draw();
+}
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  W = canvas.width;
+  H = canvas.height;
+  COLS = Math.floor(W / CELL);
+  ROWS = Math.floor(H / CELL);
+  if (gameActive) draw();
+}
+
+// ─── Screen helpers ───────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+function showScreen(id) {
+  ['startScreen','countdownScreen','gameOverScreen'].forEach(s => {
+    const el = $(s);
+    el.classList.toggle('hidden', s !== id);
+  });
+}
+
+// ─── Sensor ──────────────────────────────────────────────────────────────────
+function setupSensor() {
+  if (typeof DeviceOrientationEvent === 'undefined') {
+    activateKeyboardFallback();
+    return;
+  }
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission()
+      .then(state => {
+        if (state === 'granted') activateSensor();
+        else activateKeyboardFallback();
+      }).catch(() => activateKeyboardFallback());
+  } else {
+    activateSensor();
+  }
+}
+
+function activateSensor() {
+  window.addEventListener('deviceorientation', onTilt, true);
+  usingSensor = true;
+  $('sensorDot').classList.add('active');
+  $('sensorLabel').textContent = 'GYRO ON';
+  $('tilt-indicator').style.display = 'flex';
+  $('dpad').style.display = 'none';
+}
+
+function activateKeyboardFallback() {
+  usingSensor = false;
+  $('sensorDot').classList.remove('active');
+  $('sensorLabel').textContent = 'GYRO OFF — USE D-PAD';
+  $('dpad').style.display = 'grid';
+  $('tilt-indicator').style.display = 'none';
+}
+
+function onTilt(e) {
+  const b = e.beta || 0;
+  const g = e.gamma || 0;
+  gamma = g;
+
+  // Update tilt dot visual
+  const ring = 20;
+  const clampG = Math.max(-ring, Math.min(ring, g));
+  const clampB = Math.max(-ring, Math.min(ring, b - 20));
+  const dot = $('tilt-dot');
+  dot.style.left = (50 + (clampG / ring) * 45) + '%';
+  dot.style.top  = (50 + (clampB / ring) * 45) + '%';
+
+  if (!gameActive) return;
+
+  const absB = Math.abs(b - 20);
+  const absG = Math.abs(g);
+
+  if (absG > DEAD_ZONE || absB > DEAD_ZONE) {
+    if (absG > absB) {
+      if (g > DEAD_ZONE  && dir !== 'LEFT')  nextDir = 'RIGHT';
+      if (g < -DEAD_ZONE && dir !== 'RIGHT') nextDir = 'LEFT';
+    } else {
+      if (b > 20 + DEAD_ZONE && dir !== 'UP')   nextDir = 'DOWN';
+      if (b < 20 - DEAD_ZONE && dir !== 'DOWN')  nextDir = 'UP';
+    }
+  }
+}
+
+// ─── Keyboard ─────────────────────────────────────────────────────────────────
+function setupKeyboard() {
+  document.addEventListener('keydown', e => {
+    if (!gameActive) return;
+    const map = { ArrowUp:'UP', ArrowDown:'DOWN', ArrowLeft:'LEFT', ArrowRight:'RIGHT',
+                  w:'UP', s:'DOWN', a:'LEFT', d:'RIGHT' };
+    const d = map[e.key];
+    if (!d) return;
+    e.preventDefault();
+    const opp = { UP:'DOWN', DOWN:'UP', LEFT:'RIGHT', RIGHT:'LEFT' };
+    if (d !== opp[dir]) nextDir = d;
+  });
+}
+
+function setupDpad() {
+  const map = { dUp:'UP', dDown:'DOWN', dLeft:'LEFT', dRight:'RIGHT' };
+  Object.entries(map).forEach(([id, d]) => {
+    const el = $(id);
+    if (!el) return;
+    const press = e => {
+      e.preventDefault();
+      if (!gameActive) return;
+      const opp = { UP:'DOWN', DOWN:'UP', LEFT:'RIGHT', RIGHT:'LEFT' };
+      if (d !== opp[dir]) nextDir = d;
+    };
+    el.addEventListener('touchstart', press, {passive: false});
+    el.addEventListener('mousedown', press);
+  });
+}
+
+// ─── Game logic ───────────────────────────────────────────────────────────────
+function initGame() {
+  const startCol = Math.floor(COLS / 2);
+  const startRow = Math.floor(ROWS / 2);
+  snake = [
+    {x: startCol, y: startRow},
+    {x: startCol - 1, y: startRow},
+    {x: startCol - 2, y: startRow},
+  ];
+  dir = 'RIGHT';
+  nextDir = 'RIGHT';
+  score = 0;
+  level = 1;
+  biteCount = 0;
+  speed = 180;
+  placeFood();
+  updateHUD();
+}
+
+function placeFood() {
+  const occupied = new Set(snake.map(s => `${s.x},${s.y}`));
+  let x, y;
+  do {
+    x = Math.floor(Math.random() * COLS);
+    y = Math.floor(Math.random() * ROWS);
+  } while (occupied.has(`${x},${y}`));
+  food = {x, y, pulse: 0};
+}
+
+function tick(ts) {
+  if (!gameActive) return;
+  gameLoop = requestAnimationFrame(tick);
+
+  const dt = ts - lastTime;
+  lastTime = ts;
+  elapsed += dt;
+
+  if (elapsed < speed) return;
+  elapsed = 0;
+
+  dir = nextDir;
+
+  const head = snake[0];
+  const moves = { UP:{x:0,y:-1}, DOWN:{x:0,y:1}, LEFT:{x:-1,y:0}, RIGHT:{x:1,y:0} };
+  const m = moves[dir];
+  const newHead = { x: head.x + m.x, y: head.y + m.y };
+
+  // Wall collision
+  if (newHead.x < 0 || newHead.x >= COLS || newHead.y < 0 || newHead.y >= ROWS) {
+    return endGame('WALL COLLISION');
+  }
+
+  // Self collision
+  if (snake.some(s => s.x === newHead.x && s.y === newHead.y)) {
+    return endGame('SELF DESTRUCTION');
+  }
+
+  snake.unshift(newHead);
+
+  // Food
+  if (newHead.x === food.x && newHead.y === food.y) {
+    score += 10 * level;
+    biteCount++;
+    if (biteCount % 5 === 0 && speed > 80) {
+      speed = Math.max(80, speed - 15);
+      level++;
+    }
+    updateHUD();
+    const eatenX = food.x * CELL + CELL/2;
+    const eatenY = food.y * CELL + CELL/2;
+    placeFood();
+    spawnParticles(eatenX, eatenY);
+  } else {
+    snake.pop();
+  }
+
+  draw();
+}
+
+function updateHUD() {
+  $('scoreVal').textContent = score;
+  $('levelVal').textContent = level;
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+let particles = [];
+
+function spawnParticles(x, y) {
+  for (let i = 0; i < 10; i++) {
+    const angle = (Math.PI * 2 / 10) * i + Math.random() * 0.5;
+    const speed = 2 + Math.random() * 3;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1,
+      decay: 0.04 + Math.random() * 0.04,
+      size: 2 + Math.random() * 3,
+      color: Math.random() > 0.5 ? '#ff2d78' : '#ffd700'
+    });
+  }
+}
+
+// ─── Drawing ──────────────────────────────────────────────────────────────────
+function draw() {
+  ctx.fillStyle = '#050810';
+  ctx.fillRect(0, 0, W, H);
+
+  drawGrid();
+  if (gameActive || gameStarted) {
+    drawFood();
+    drawSnake();
+    drawParticles();
+  }
+}
+
+function drawGrid() {
+  ctx.strokeStyle = 'rgba(0, 245, 255, 0.04)';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= W; x += CELL) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = 0; y <= H; y += CELL) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+}
+
+function drawSnake() {
+  snake.forEach((seg, i) => {
+    const isHead = i === 0;
+    const t = i / snake.length;
+    const alpha = 1 - t * 0.6;
+
+    if (isHead) {
+      ctx.shadowColor = '#39ff14';
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = '#39ff14';
+    } else {
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      // Gradient from cyan to green along body
+      const r1 = [26, 255, 136], r2 = [0, 200, 100];
+      const r = Math.round(r1[0] + (r2[0]-r1[0])*t);
+      const g = Math.round(r1[1] + (r2[1]-r1[1])*t);
+      const b = Math.round(r1[2] + (r2[2]-r1[2])*t);
+      ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+    }
+
+    const pad = isHead ? 1 : 2;
+    const radius = isHead ? 4 : 3;
+    roundRect(ctx, seg.x * CELL + pad, seg.y * CELL + pad, CELL - pad*2, CELL - pad*2, radius);
+    ctx.fill();
+
+    // Head eyes
+    if (isHead) {
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#00f5ff';
+      const eyeOffset = { UP: [{x:4,y:2},{x:12,y:2}], DOWN: [{x:4,y:15},{x:12,y:15}],
+                          LEFT: [{x:2,y:4},{x:2,y:12}], RIGHT: [{x:15,y:4},{x:15,y:12}] };
+      const eyes = eyeOffset[dir] || eyeOffset['RIGHT'];
+      eyes.forEach(e => {
+        ctx.beginPath();
+        ctx.arc(seg.x * CELL + e.x, seg.y * CELL + e.y, 2, 0, Math.PI*2);
+        ctx.fill();
+      });
+    }
+  });
+  ctx.shadowBlur = 0;
+}
+
+function drawFood() {
+  if (!food) return;
+  food.pulse = (food.pulse || 0) + 0.07;
+  const scale = 1 + Math.sin(food.pulse) * 0.15;
+  const cx = food.x * CELL + CELL/2;
+  const cy = food.y * CELL + CELL/2;
+  const r = (CELL/2 - 3) * scale;
+
+  ctx.save();
+  ctx.shadowColor = '#ff2d78';
+  ctx.shadowBlur = 15;
+  ctx.fillStyle = '#ff2d78';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.beginPath();
+  ctx.arc(cx - r*0.25, cy - r*0.25, r*0.3, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawParticles() {
+  particles = particles.filter(p => p.life > 0);
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.15;
+    p.life -= p.decay;
+
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x+w, y, x+w, y+h, r);
+  ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r);
+  ctx.arcTo(x, y, x+w, y, r);
+  ctx.closePath();
+}
+
+// ─── Start / End ─────────────────────────────────────────────────────────────
+function startCountdown(cb) {
+  showScreen('countdownScreen');
+  let n = 3;
+  $('countdownNum').textContent = n;
+  const interval = setInterval(() => {
+    n--;
+    if (n <= 0) {
+      clearInterval(interval);
+      cb();
+    } else {
+      $('countdownNum').textContent = n;
+    }
+  }, 800);
+}
+
+function startGame() {
+  initGame();
+  gameStarted = true;
+  showScreen(null);
+  ['startScreen','countdownScreen','gameOverScreen'].forEach(s => $(s).classList.add('hidden'));
+  $('hud').style.display = 'flex';
+  $('sensor-status').style.display = 'block';
+
+  if (keyboardMode) {
+    $('dpad').style.display = 'grid';
+    $('tilt-indicator').style.display = 'none';
+  } else {
+    $('tilt-indicator').style.display = usingSensor ? 'flex' : 'none';
+    $('dpad').style.display = usingSensor ? 'none' : 'grid';
+  }
+
+  gameActive = true;
+  lastTime = performance.now();
+  elapsed = 0;
+  gameLoop = requestAnimationFrame(tick);
+}
+
+function endGame(cause) {
+  gameActive = false;
+  if (gameLoop) cancelAnimationFrame(gameLoop);
+  gameLoop = null;
+
+  if (score > highScore) highScore = score;
+
+  $('finalScore').textContent = score;
+  $('deathCause').textContent = cause;
+  $('bestScore').textContent = highScore;
+  $('hud').style.display = 'none';
+
+  setTimeout(() => {
+    ['startScreen','countdownScreen','gameOverScreen'].forEach(s => $(s).classList.add('hidden'));
+    $('gameOverScreen').classList.remove('hidden');
+  }, 400);
+}
+
+// ─── Button wiring ────────────────────────────────────────────────────────────
+$('startBtn').addEventListener('click', () => {
+  keyboardMode = false;
+  setupSensor();
+  startCountdown(startGame);
+});
+
+$('keyboardBtn').addEventListener('click', () => {
+  keyboardMode = true;
+  activateKeyboardFallback();
+  startCountdown(startGame);
+});
+
+$('restartBtn').addEventListener('click', () => {
+  $('gameOverScreen').classList.add('hidden');
+  $('hud').style.display = 'flex';
+  particles = [];
+  if (!keyboardMode) {
+    $('tilt-indicator').style.display = usingSensor ? 'flex' : 'none';
+    $('dpad').style.display = usingSensor ? 'none' : 'grid';
+  } else {
+    $('dpad').style.display = 'grid';
+  }
+  initGame();
+  gameActive = true;
+  lastTime = performance.now();
+  elapsed = 0;
+  gameLoop = requestAnimationFrame(tick);
+});
+
+$('menuBtn').addEventListener('click', () => {
+  gameActive = false;
+  gameStarted = false;
+  if (gameLoop) cancelAnimationFrame(gameLoop);
+  if (usingSensor) {
+    window.removeEventListener('deviceorientation', onTilt, true);
+    usingSensor = false;
+  }
+  particles = [];
+  $('hud').style.display = 'none';
+  $('tilt-indicator').style.display = 'none';
+  $('dpad').style.display = 'none';
+  $('sensor-status').style.display = 'none';
+  ['startScreen','countdownScreen','gameOverScreen'].forEach(s => $(s).classList.add('hidden'));
+  $('startScreen').classList.remove('hidden');
+  draw();
+});
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+setup();
+</script>
+</body>
+</html>
